@@ -128,6 +128,9 @@ obj/%.o: %.cpp $(HEADERS)
 	$(CXX) $(CFLAGS) $(LDFLAGS) -o $@ $(LIBPATHS) $^ $(LIBS) -lshlwapi
 	$(STRIP) 1337d.exe
 
+obj/zerocoin/%.o: zerocoin/%.cpp $(HEADERS)
+	$(CXX) -c $(CFLAGS) -o $@ $<
+
 obj/scrypt-x86.o: scrypt-x86.S
 	$(CXX) -c $(CFLAGS) -MMD -o $@ $<
 
