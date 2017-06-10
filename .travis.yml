@@ -1,0 +1,73 @@
+sudo: required
+dist: trusty
+os: linux
+language: cpp
+cache:
+  directories:
+  - depends/built
+  - depends/sdk-sources
+  - "$HOME/.ccache"
+env:
+  global:
+  - MAKEJOBS=-j3
+  - CCACHE_SIZE=100M
+  - CCACHE_TEMPDIR=/tmp/.ccache-temp
+  - CCACHE_COMPRESS=1
+  - DEPS_URL=http://178.62.1.119/
+  matrix:
+    - BUILD=win32 HOST=i686-w64-mingw32   DISTNAME=i686-win   PACKAGES="mingw-w64 g++-mingw-w64" BITS=32 MAKEFILE=makefile.linux-mingw BOOST_LIB_SUFFIX="-mt-s" OUTPUT_SUFFIX=".exe" QMAKEOPTS="-xplatform win32-g++" BOOST_THREAD_LIB_SUFFIX="_win32-mt-s"
+    - BUILD=win64 HOST=x86_64-w64-mingw32 DISTNAME=x86_64-win PACKAGES="mingw-w64 g++-mingw-w64" BITS=64 MAKEFILE=makefile.linux-mingw BOOST_LIB_SUFFIX="-mt-s" OUTPUT_SUFFIX=".exe" QMAKEOPTS="-xplatform win32-g++" BOOST_THREAD_LIB_SUFFIX="_win32-mt-s"
+    - BUILD=macosx HOST=x86_64-apple-darwin14 DISTNAME=x86_64-darwin PACKAGES="clang llvm-dev genisoimage"  BOOST_LIB_SUFFIX="-mt-s" BOOST_THREAD_LIB_SUFFIX="-mt-s" DEPS=blackcoin-deps-osx.tar.xz EXTRADEPS=osxcross.tar.xz QMAKE_CXXFLAGS="-I/home/vagrant/deps/SDK/MacOSX10.9/usr/include -DBOOST_HAS_INT128=1" QMAKEOPTS="-xplatform macx-clang-linux" OTOOL=${HOST}-otool INSTALLNAMETOOL=${HOST}-install_name_tool STRIP=${HOST}-strip
+    - BUILD=linux64 MAKEFILE=makefile.unix  BOOST_LIB_SUFFIX="-mt" BITS=64
+
+before_install:
+- sudo apt-get -qq update
+install:
+  - if [ "$DEPS" == "" ]; then export DEPS=blackcoin-deps-${BUILD}.tar.xz; fi
+  - export INDIR=$HOME/inputs
+  - export DEPSDIR=$HOME/deps${BITS}
+  - export PATH=$DEPSDIR/host/bin:$DEPSDIR:$DEPSDIR/bin:$PATH
+  - export QTDIR=$TRAVIS_BUILD_DIR
+  - sudo apt-get install build-essential $PACKAGES
+  - mkdir -p $INDIR $DEPSDIR
+  - cd $INDIR && wget $DEPS_URL/$DEPS `[ "$EXTRADEPS" != "" ] && echo $DEPS_URL/$EXTRADEPS`
+  - cd $DEPSDIR && tar xf $INDIR/$DEPS
+  - if [ $EXTRADEPS != "" ]; then tar xf $INDIR/$EXTRADEPS; fi
+
+script:
+  - echo 'Build Daemon' && echo -en 'travis_fold:start:script.daemon\\r'
+  - cd $TRAVIS_BUILD_DIR/src
+  - if [ "$MAKEFILE" != "" ]; then make $MAKEJOBS -f $MAKEFILE HOST="$HOST" STATIC=1 OPENSSL_INCLUDE_PATH="$DEPSDIR/include" OPENSSL_LIB_PATH="$DEPSDIR/lib" DEPSDIR="$DEPSDIR" CURDIR="$TRAVIS_BUILD_DIR/src" USE_UPNP=1 BOOST_LIB_SUFFIX="$BOOST_LIB_SUFFIX" DEBUGFLAGS= && install -s 1337${OUTPUT_SUFFIX} $INDIR/; fi
+  - ls -la
+  - echo -en 'travis_fold:end:script.daemon\\r'
+
+  - echo 'Build Qt' && echo -en 'travis_fold:start:script.qt\\r'
+  - cd $TRAVIS_BUILD_DIR
+  - qmake $QMAKEOPTS QMAKE_LRELEASE="$DEPSDIR/host/bin/lrelease" INCLUDEPATH="$DEPSDIR/include" LIBS="-L$DEPSDIR/lib" BOOST_LIB_SUFFIX="$BOOST_LIB_SUFFIX" BOOST_THREAD_LIB_SUFFIX="$BOOST_THREAD_LIB_SUFFIX" RELEASE=1 DEFINES=BOOST_THREAD_USE_LIB QMAKE_CXXFLAGS="-frandom-seed=black $QMAKE_CXXFLAGS" USE_BUILD_INFO=1 USE_O3=1
+  - if [[ "$BUILD" =~ "linux" ]]; then sed -i 's^,-whole-archive -lleveldb -Wl,^,-lleveldb,^' Makefile; fi
+  - make $MAKEJOBS
+  - ls -la
+  - echo -en 'travis_fold:end:script.qt\\r'
+  - echo 'Package executables' && echo -en 'travis_fold:start:script.package\\r'
+  - mkdir upload;
+  - if [ -d release ]; then cp release/1337-qt${OUTPUT_SUFFIX} upload/1337-qt${OUTPUT_SUFFIX}; fi
+  - if [ -d 1337-Qt.app ]; then cp 1337-Qt.app upload/1337-Qt.app; fi
+  - if [ -d 1337-Qt.app ]; then contrib/macdeploy/createdmg; mv 1337.macosx.dmg upload/1337.dmg; fi
+  - if [ -f src/1337${OUTPUT_SUFFIX} ]; then cp src/1337${OUTPUT_SUFFIX} upload/13337${OUTPUT_SUFFIX}; fi
+  - if [ -f 1337-qt ]; then cp 1337-qt upload/1337-qt; fi
+  - ls -la upload
+  - zip 1337-${BUILD}.zip upload/* -r
+  - export UPLOAD=$(pwd)/1337-${BUILD}.zip
+  - echo -en 'travis_fold:end:script.package\\r'
+after_script:
+- echo $TRAVIS_COMMIT_RANGE
+- echo $TRAVIS_COMMIT_LOG
+notifications:
+  irc: chat.freenode.net#multicoin-co
+deploy:
+  skip_cleanup: true
+  provider: releases
+  api_key:
+    secure: fTgmlgByemvSNH0e4X7ADlhm4PbsevoLu0iI5vJZRIunFrAIqDpDQSgxJU+WnOQIPxaG4+o6RonCUDSftwQ4lXOTWrJNAkXKreln9go9ZEhTutcWagRVrwSeJLbx1F9ymbzsViUh9aowxeFqzcZc4Zqrk2Yp/KWpTBCnt96BdR6cupzTkAiBVORgPQefE2ZgZ1gEEk4pKfPLle4eznyi2xXP+T9oQV3oq/UVOZZZ4Dm9xPsj70IvY5VIqmxI1D4TTfipRV+VG6fydFw96OW1sLIESUzoKnck728FF5rjqOFqWT1o540w1PWBh4BPd4hFWPWCLlNJRq72DN0VmvpdIJ7AUcDuofiSsm/LtdTSRWY8ijmH9AQ0qDCkVCHINJU/MwHUwaOhbPEqKzJGXOWNbzOU4fGrZres+C63eKLO7iitQomhlKTFPp8V89mYvZrP+Z/haZGPSuB/hhi+0y8KBNXQnOkJBCvO549ZglpZ9z1nKMbtfggC9ZJpgB92MzIF9Jb4HnqhR2ZfjTw8lUMIAuVw88q9Vx8+r2dDvn/L/0HI1SM52ULfHe3KIsupM+OjBpjUYo3uPs/78MUg4Zpa2h/D1331ZZ7PhINODPSWP8Ys0vNMBvKLEASlkl8wEVKFzVQMZFXJrZBzKriXuhlsy21AdXlK12BK4YuRuou6Ycw=
+  file:
+    - $UPLOAD
