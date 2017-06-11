@@ -51,7 +51,7 @@ script:
   - echo 'Package executables' && echo -en 'travis_fold:start:script.package\\r'
   - mkdir upload;
   - if [ -d release ]; then cp release/1337-qt${OUTPUT_SUFFIX} upload/1337-qt${OUTPUT_SUFFIX}; fi
-  - if [ -d 1337-Qt.app ]; then cp 1337-Qt.app upload/1337-Qt.app; fi
+  - if [ -d 1337-Qt.app ]; then cp -r 1337-Qt.app upload/1337-Qt.app; fi
   - if [ -d 1337-Qt.app ]; then contrib/macdeploy/createdmg; mv 1337.macosx.dmg upload/1337.dmg; fi
   - if [ -f src/1337${OUTPUT_SUFFIX} ]; then cp src/1337${OUTPUT_SUFFIX} upload/13337${OUTPUT_SUFFIX}; fi
   - if [ -f 1337-qt ]; then cp 1337-qt upload/1337-qt; fi
